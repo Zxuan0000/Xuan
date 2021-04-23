@@ -1,0 +1,109 @@
+# -*- codeing = utf-8 -*-
+
+import re
+from bs4 import BeautifulSoup
+import urllib.request,urllib.error
+import xlwt
+import sqlite3
+
+#得到一个指定网址的内容
+def askurl(url):
+    header={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36'}
+    req = urllib.request.Request(url=url, headers=header)
+    html = ''
+    try :
+        response = urllib.request.urlopen(req)
+        html = response.read().decode('utf-8')
+      #  print(html)
+    except urllib.error.URLError as e:
+        if hasattr(e,'code'):
+            print(e.code)
+    return html
+
+def main():
+    baseurl = 'https://movie.douban.com/top250?start='
+    #爬取网页
+    datalist = getdata(baseurl)
+    #保存数据
+    savepath = '豆瓣评分top250.xls'
+    savedata(datalist,savepath)
+#影片连接
+findLink = re.compile(r'<a href="(.*?)">')
+#影片图片
+findImgsrc = re.compile(r'<img.*src="(.*?)"',re.S)#让换行符包含在字符中
+#影片片名
+findTittle =re.compile(r'<span class="title">(.*)</span>')
+#影片评分
+findRating = re.compile(r'<span class="rating_num" property="v:average">(.*)</span>')
+#影片评价人数
+findJudge = re.compile(r'<span>(\d*)人评价</span>')
+#影片概况
+findInq = re.compile(r'<span class="inq">(.*)</span>')
+#影片相关内容
+findBd = re.compile(r'<p class="">(.*?)</p>',re.S)
+def getdata(baseurl):
+    datalist = []
+    #逐一解析网页
+
+    for item in range(0,10):
+        url = baseurl+str(item*25)
+        html = askurl(url)
+        #逐一解析数据
+        soup = BeautifulSoup(html,'html.parser')
+        for item in soup.find_all('div',class_="item"):#查找符合要求的字符串形成列表
+            #print(item)测试
+            data = []#保存一步电影的所有信息
+            item = str(item)
+           # print(item)
+
+            #影片详情的连接
+            link = re.findall(findLink,item)[0]
+            data.append(link)           #添加连接
+            imgsrc = re.findall(findImgsrc,item)[0]
+            data.append(imgsrc)           #添加图片
+            tittles = re.findall(findTittle,item)
+            if(len(tittles) == 2):
+                ctittle = tittles[0]
+                data.append(ctittle)        #添加中文名
+                otittle = tittles[1].replace('/','')#去掉无关的符号
+                data.append(otittle)          #添加外国名
+            else:
+                data.append(tittles[0])
+                data.append(' ')#外国名字留空 为了齐整
+            rating = re.findall(findRating,item)[0]
+            data.append(rating)                #添加影片评分
+            judge = re.findall(findJudge,item)[0]
+            data.append(judge)                  #添加#影片评价人数
+            inq = re.findall(findInq,item)
+            if (len(inq)!=0):
+                data.append(inq[0].replace('。',' '))                #添加概况
+            else:
+                data.append(' ')
+
+            bd = re.findall(findBd,item)[0]
+            bd = re.sub('<br(\s+)?/>(\s+)?',' ',bd)     #去掉<br/>
+            bd = re.sub('/',' ',bd)         #去掉/
+            data.append(bd.strip())         #去掉空格
+            datalist.append(data)           #吧处理好的一步电影信息保存到datalist
+
+    #print(datalist)
+    return datalist
+
+def savedata(datalist,savepath):
+    print('saving....')
+    book = xlwt.Workbook(encoding='utf-8',style_compression=0)
+    sheet = book.add_sheet('豆瓣电影250',cell_overwrite_ok=True)
+    col = ('电影详情连接','图片连接','影片中文名','影片外国名','评分','评价数量','概况','相关信息')
+    for item in range(0,8):
+        sheet.write(0,item,col[item])
+    for item in range(0,250):
+        print('第%d条'%(item+1))
+        data = datalist[item]
+        for j in range(0,8):
+            sheet.write(item + 1, j, data[j])
+
+        book.save(savepath)  # 保存
+
+
+if __name__ == '__main__':
+    main()
